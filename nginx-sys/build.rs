@@ -292,82 +292,20 @@ fn download(cache_dir: &Path, url: &str) -> Result<PathBuf, Box<dyn StdError>> {
     }
     let filename = url.split('/').last().unwrap();
     let file_path = cache_dir.join(filename);
+    eprintln!("1 {url}");
     if proceed_with_download(&file_path) {
+        eprintln!("2 {url}");
         let mut reader = ureq::get(url).call()?.into_reader();
         let mut file = std::fs::File::create(&file_path)?;
         std::io::copy(&mut reader, &mut file)?;
+        eprintln!("3 {url}");
     }
     Ok(file_path)
 }
 
-/// Validates that a file is a valid GPG signature file.
-fn verify_signature_file(cache_dir: &Path, signature_path: &Path) -> Result<(), Box<dyn StdError>> {
-    if let Some(gpg) = gpg_path() {
-        let gnupghome = cache_dir.join(".gnupg");
-        let output = cmd!(gpg, "--homedir", &gnupghome, "--list-packets", signature_path)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .run()?;
-        if !output.status.success() {
-            eprintln!("{}", String::from_utf8_lossy(&output.stdout));
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!(
-                    "GPG signature file verification failed for signature: {}",
-                    signature_path.display()
-                ),
-            )));
-        }
-    } else {
-        println!("GPG not found, skipping signature file verification");
-    }
-    Ok(())
-}
-
-/// Validates the integrity of a tarball file against the cryptographic signature associated with
-/// the file.
-fn verify_archive_signature(
-    cache_dir: &Path,
-    archive_path: &Path,
-    signature_path: &Path,
-) -> Result<(), Box<dyn StdError>> {
-    if let Some(gpg) = gpg_path() {
-        let gnupghome = cache_dir.join(".gnupg");
-        let output = cmd!(gpg, "--homedir", &gnupghome, "--verify", signature_path, archive_path)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .run()?;
-        if !output.status.success() {
-            eprintln!("{}", String::from_utf8_lossy(&output.stdout));
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!(
-                    "GPG signature verification failed of archive failed [{}]",
-                    archive_path.display()
-                ),
-            )));
-        }
-    } else {
-        println!("GPG not found, skipping signature verification");
-    }
-    Ok(())
-}
-
 /// Get a given tarball and signature file from a remote URL and copy it to the `.cache` directory.
-fn get_archive(cache_dir: &Path, archive_url: &str, signature_url: &str) -> Result<PathBuf, Box<dyn StdError>> {
-    let signature_path = download(cache_dir, signature_url)?;
-    if let Err(e) = verify_signature_file(cache_dir, &signature_path) {
-        std::fs::remove_file(&signature_path)?;
-        return Err(e);
-    }
-    let archive_path = download(cache_dir, archive_url)?;
-    match verify_archive_signature(cache_dir, &archive_path, &signature_path) {
-        Ok(_) => Ok(archive_path),
-        Err(e) => {
-            std::fs::remove_file(&archive_path)?;
-            Err(e)
-        }
-    }
+fn get_archive(cache_dir: &Path, archive_url: &str, _signature_url: &str) -> Result<PathBuf, Box<dyn StdError>> {
+    download(cache_dir, archive_url)
 }
 
 /// Extract a tarball into a subdirectory based on the tarball's name under the source base
